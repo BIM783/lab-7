@@ -1,0 +1,136 @@
+import numpy as np
+from math import *
+import matplotlib.pyplot as plt
+from scipy.integrate import ode
+
+grad = pi / 180
+g = 9.81
+ro = 1.240
+a = 340
+
+x_0 = 0
+y_0 = 0
+V_0 = 100
+theta_0 = 30
+mass = 30
+S_m = pi * 0.1**2 / 4
+
+
+def C_x(M):
+    return 0.44
+
+
+def thrust(t):
+    if t <= 1:
+        return 150 * t
+    elif t <= 3:
+        return 150
+    elif t <= 4:
+        return 150 - 100 * (t - 3)
+    elif t <= 5:
+        return 50
+    else:
+        return 0
+
+def f_scipy(t, Y):
+    x, y, V_x, V_y = Y
+    V = sqrt(V_x**2 + V_y**2)
+    M = V / a
+
+    F_drag = 0.5 * ro * V**2 * S_m * C_x(M)
+    F_drag_x = -F_drag * V_x / V
+    F_drag_y = -F_drag * V_y / V
+
+    P = thrust(t)
+    P_x = P * cos(theta_0 * grad)
+    P_y = P * sin(theta_0 * grad)
+
+    a_x = (P_x + F_drag_x) / mass
+    a_y = (P_y + F_drag_y) / mass - g
+
+    return [V_x, V_y, a_x, a_y]
+
+
+Y_0 = [x_0, y_0, V_0 * cos(theta_0 * grad), V_0 * sin(theta_0 * grad)]
+
+solver = ode(f_scipy)
+solver.set_integrator('dopri5')
+solver.set_initial_value(Y_0, 0)
+
+dt = 0.01  # начальный шаг
+t_values = [0]
+y_values = [Y_0]
+
+while solver.successful() and solver.y[1] >= 0:
+    solver.integrate(solver.t + dt)
+    t_values.append(solver.t)
+    y_values.append(solver.y.copy())
+
+t_values = np.array(t_values)
+y_values = np.array(y_values)
+
+plt.figure(figsize=(12, 8))
+
+# Траектория
+plt.subplot(2, 2, 1)
+plt.plot(y_values[:, 0], y_values[:, 1], 'b-', linewidth=2, label='Траектория (scipy)')
+plt.plot(y_values[0, 0], y_values[0, 1], 'go', markersize=8, label='Старт')
+plt.plot(y_values[-1, 0], y_values[-1, 1], 'ro', markersize=8, label='Падение')
+plt.grid(True, alpha=0.3)
+plt.xlabel('Дальность, м')
+plt.ylabel('Высота, м')
+plt.title('Траектория движения (scipy.integrate.ode)')
+plt.legend()
+plt.axhline(y=0, color='k', linestyle='-', alpha=0.3)
+
+plt.subplot(2, 2, 2)
+V = np.sqrt(y_values[:, 2]**2 + y_values[:, 3]**2)
+plt.plot(t_values, y_values[:, 2], 'r-', label='V_x')
+plt.plot(t_values, y_values[:, 3], 'g-', label='V_y')
+plt.plot(t_values, V, 'b-', label='|V|')
+plt.grid(True, alpha=0.3)
+plt.xlabel('Время, с')
+plt.ylabel('Скорость, м/с')
+plt.title('Компоненты скорости')
+plt.legend()
+
+plt.subplot(2, 2, 3)
+
+accelerations = np.array([f_scipy(t, y) for t, y in zip(t_values, y_values)])
+a_x = accelerations[:, 2]
+a_y = accelerations[:, 3]
+a_total = np.sqrt(a_x**2 + a_y**2)
+
+plt.plot(t_values, a_x, 'r-', label='a_x')
+plt.plot(t_values, a_y, 'g-', label='a_y')
+plt.plot(t_values, a_total, 'b-', label='|a|')
+plt.grid(True, alpha=0.3)
+plt.xlabel('Время, с')
+plt.ylabel('Ускорение, м/с²')
+plt.title('Компоненты ускорения')
+plt.legend()
+
+plt.subplot(2, 2, 4)
+plt.axis('off')
+info_text = f"""
+
+Параметры полета:
+Начальная скорость: {V_0} м/с
+Угол броска: {theta_0}°
+Масса: {mass} кг
+
+Результаты:
+Дальность: {y_values[-1, 0]:.2f} м
+Время полета: {t_values[-1]:.2f} с
+Макс. высота: {max(y_values[:, 1]):.2f} м"""
+plt.text(0.1, 0.5, info_text, transform=plt.gca().transAxes,
+         verticalalignment='center', fontsize=9,
+         bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+plt.tight_layout()
+plt.show()
+
+print("\n" + "-"*50)
+print("\nКритерий остановки: y < 0 (падение на землю)")
+print(f"Количество шагов: {len(t_values)}")
+print(f"Финальный шаг времени: {t_values[-1] - t_values[-2]:.6f} с")
