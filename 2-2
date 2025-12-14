@@ -1,0 +1,133 @@
+import numpy as np
+from math import *
+import matplotlib.pyplot as plt
+
+grad = pi / 180
+g = 9.81
+ro = 1.240
+a = 340
+
+x_0 = 0
+y_0 = 0
+V_0 = 100
+theta_0 = 30
+mass = 30
+S_m = pi * 0.1**2 / 4
+
+
+def C_x(M):
+    return 0.44
+
+
+def thrust(t):
+
+    if t <= 1:
+        return 150 * t  
+    elif t <= 3:
+        return 150 
+    elif t <= 4:
+        return 150 - 100 * (t - 3)  
+    elif t <= 5:
+        return 50   
+    else:
+        return 0  
+
+
+Y_0 = np.array([
+    x_0,
+    y_0,
+    V_0 * cos(theta_0 * grad),
+    V_0 * sin(theta_0 * grad)
+])
+
+
+def f(t, Y):
+    x, y, V_x, V_y = Y
+    V = sqrt(V_x**2 + V_y**2)
+    M = V / a
+
+    F_drag = 0.5 * ro * V**2 * S_m * C_x(M)
+    F_drag_x = -F_drag * V_x / V
+    F_drag_y = -F_drag * V_y / V
+
+    P = thrust(t)
+    P_x = P * cos(theta_0 * grad)
+    P_y = P * sin(theta_0 * grad)
+
+    a_x = (P_x + F_drag_x) / mass
+    a_y = (P_y + F_drag_y) / mass - g
+
+    return [V_x, V_y, a_x, a_y]
+
+
+def euler_with_landing(t_0, t_1, y_0, dYdt, n_points):
+    h = (t_1 - t_0) / (n_points - 1)
+    t_points = [t_0]
+    y_points = [y_0.copy()]
+
+    current_t = t_0
+    current_y = y_0.copy()
+
+    for i in range(1, n_points):
+        current_t = t_0 + i * h
+
+        derivative = np.array(dYdt(current_t, current_y))
+        new_y = current_y + h * derivative
+
+        if new_y[1] < 0:
+            t_fall = current_t - h + h * (current_y[1] / (current_y[1] - new_y[1]))
+            y_fall = current_y + (t_fall - (current_t - h)) * derivative
+            t_points.append(t_fall)
+            y_points.append(y_fall)
+            break
+        else:
+            t_points.append(current_t)
+            y_points.append(new_y)
+            current_y = new_y
+
+    return np.array(t_points), np.array(y_points)
+
+
+t0 = 0
+t1 = 20
+n_points = 20000
+
+t, y = euler_with_landing(t0, t1, Y_0, f, n_points)
+
+valid_indices = y[:, 1] >= 0
+x_valid = y[valid_indices, 0]
+y_valid = y[valid_indices, 1]
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+ax1.plot(x_valid, y_valid, 'b-', linewidth=2, label='Траектория движения')
+ax1.plot(x_valid[0], y_valid[0], 'go', markersize=8, label='Начальная точка')
+ax1.plot(x_valid[-1], y_valid[-1], 'ro', markersize=8, label='Точка падения')
+
+ax1.grid(True, alpha=0.3)
+ax1.set_xlabel('Дальность полёта, м', fontsize=12)
+ax1.set_ylabel('Высота, м', fontsize=12)
+ax1.set_title('Траектория движения с новым профилем тяги', fontsize=14)
+ax1.legend(fontsize=10)
+ax1.axhline(y=0, color='k', linestyle='-', alpha=0.3)
+ax1.set_ylim(bottom=-5)
+
+t_thrust = np.linspace(0, min(t[-1], 6), 1000)
+P_thrust = [thrust(t_i) for t_i in t_thrust]
+
+ax2.plot(t_thrust, P_thrust, 'r-', linewidth=2, label='Сила тяги')
+ax2.fill_between(t_thrust, P_thrust, alpha=0.3, color='red')
+ax2.grid(True, alpha=0.3)
+ax2.set_xlabel('Время, с', fontsize=12)
+ax2.set_ylabel('Сила тяги, Н', fontsize=12)
+ax2.set_title('Профиль силы тяги', fontsize=14)
+ax2.legend(fontsize=10)
+ax2.set_ylim(bottom=0)
+
+plt.tight_layout()
+plt.show()
+
+print(f"Дальность полета: {x_valid[-1]:.2f} м")
+print(f"Время полета: {t[valid_indices][-1]:.2f} с")
+print(f"Максимальная высота: {max(y_valid):.2f} м")
+
